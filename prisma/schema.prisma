@@ -1,0 +1,393 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum UserRole {
+  OWNER
+  HEAD
+  LEAD
+  ACTOR
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  INACTIVE
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  REVIEW
+  DONE
+  CANCELLED
+}
+
+enum TaskPriority {
+  P0
+  P1
+  P2
+  P3
+}
+
+enum TaskRelationType {
+  DEPENDS_ON
+  BLOCKS
+  RELATED
+}
+
+enum RetroType {
+  WEEKLY
+  MID
+  MONTHLY
+}
+
+enum Visibility {
+  PRIVATE
+  TEAM
+  ALL
+}
+
+enum IntegrationProvider {
+  GITHUB
+  SLACK
+}
+
+enum ScheduleType {
+  MEETING
+  REMINDER
+  REPORT
+}
+
+// ============================================
+// MODELS
+// ============================================
+
+model User {
+  id              String     @id @default(uuid())
+  email           String     @unique
+  passwordHash    String     @map("password_hash")
+  name            String
+  role            UserRole   @default(ACTOR)
+  teamId          String?    @map("team_id")
+  status          UserStatus @default(PENDING)
+  profileImageUrl String?    @map("profile_image_url")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  // Relations
+  team                  Team?                 @relation(fields: [teamId], references: [id])
+  assignedTasks         Task[]                @relation("TaskAssignee")
+  createdTasks          Task[]                @relation("TaskCreator")
+  taskComments          TaskComment[]
+  taskHistories         TaskHistory[]
+  retrospectives        Retrospective[]
+  notifications         Notification[]
+  integrations          UserIntegration[]
+  auditLogs             AuditLog[]
+  refreshTokens         RefreshToken[]
+  createdSchedules      Schedule[]
+  createdNetworkEntries NetworkWhitelist[]
+  ownedTeams            Team[]                @relation("TeamOwner")
+  retrospectiveShares   RetrospectiveShare[]
+
+  @@index([email])
+  @@index([teamId])
+  @@index([status])
+  @@map("users")
+}
+
+model Team {
+  id           String   @id @default(uuid())
+  name         String
+  description  String?
+  ownerId      String   @map("owner_id")
+  parentTeamId String?  @map("parent_team_id")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  owner               User                 @relation("TeamOwner", fields: [ownerId], references: [id])
+  parentTeam          Team?                @relation("TeamHierarchy", fields: [parentTeamId], references: [id])
+  childTeams          Team[]               @relation("TeamHierarchy")
+  members             User[]
+  tasks               Task[]
+  teamSchedules       TeamSchedule[]
+  sharesFrom          TeamShare[]          @relation("ShareFrom")
+  sharesTo            TeamShare[]          @relation("ShareTo")
+  retrospectiveShares RetrospectiveShare[]
+
+  @@map("teams")
+}
+
+model Task {
+  id                String       @id @default(uuid())
+  title             String
+  description       String?
+  status            TaskStatus   @default(TODO)
+  priority          TaskPriority @default(P2)
+  assigneeId        String?      @map("assignee_id")
+  creatorId         String       @map("creator_id")
+  teamId            String?      @map("team_id")
+  dueDate           DateTime?    @map("due_date")
+  startedAt         DateTime?    @map("started_at")
+  completedAt       DateTime?    @map("completed_at")
+  githubIssueNumber Int?         @map("github_issue_number")
+  githubPrNumber    Int?         @map("github_pr_number")
+  githubBranch      String?      @map("github_branch")
+  githubRepo        String?      @map("github_repo")
+  isPriorityLocked  Boolean      @default(false) @map("is_priority_locked")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  // Relations
+  assignee      User?          @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  creator       User           @relation("TaskCreator", fields: [creatorId], references: [id])
+  team          Team?          @relation(fields: [teamId], references: [id])
+  comments      TaskComment[]
+  histories     TaskHistory[]
+  relationsFrom TaskRelation[] @relation("TaskFrom")
+  relationsTo   TaskRelation[] @relation("TaskTo")
+
+  @@index([assigneeId])
+  @@index([teamId])
+  @@index([status])
+  @@index([priority])
+  @@index([dueDate])
+  @@index([githubRepo, githubIssueNumber])
+  @@map("tasks")
+}
+
+model TaskRelation {
+  id            String           @id @default(uuid())
+  taskId        String           @map("task_id")
+  relatedTaskId String           @map("related_task_id")
+  relationType  TaskRelationType @map("relation_type")
+  createdAt     DateTime         @default(now()) @map("created_at")
+
+  // Relations
+  task        Task @relation("TaskFrom", fields: [taskId], references: [id], onDelete: Cascade)
+  relatedTask Task @relation("TaskTo", fields: [relatedTaskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, relatedTaskId, relationType])
+  @@map("task_relations")
+}
+
+model TaskComment {
+  id        String   @id @default(uuid())
+  taskId    String   @map("task_id")
+  userId    String   @map("user_id")
+  content   String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("task_comments")
+}
+
+model TaskHistory {
+  id        String   @id @default(uuid())
+  taskId    String   @map("task_id")
+  userId    String   @map("user_id")
+  fieldName String   @map("field_name")
+  oldValue  String?  @map("old_value")
+  newValue  String?  @map("new_value")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("task_history")
+}
+
+model Retrospective {
+  id          String     @id @default(uuid())
+  userId      String     @map("user_id")
+  type        RetroType
+  title       String?
+  content     String
+  periodStart DateTime   @map("period_start") @db.Date
+  periodEnd   DateTime   @map("period_end") @db.Date
+  isDraft     Boolean    @default(true) @map("is_draft")
+  visibility  Visibility @default(PRIVATE)
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  // Relations
+  user   User                 @relation(fields: [userId], references: [id])
+  shares RetrospectiveShare[]
+
+  @@map("retrospectives")
+}
+
+model RetrospectiveShare {
+  id               String   @id @default(uuid())
+  retrospectiveId  String   @map("retrospective_id")
+  sharedWithUserId String?  @map("shared_with_user_id")
+  sharedWithTeamId String?  @map("shared_with_team_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  // Relations
+  retrospective  Retrospective @relation(fields: [retrospectiveId], references: [id], onDelete: Cascade)
+  sharedWithUser User?         @relation(fields: [sharedWithUserId], references: [id])
+  sharedWithTeam Team?         @relation(fields: [sharedWithTeamId], references: [id])
+
+  @@map("retrospective_shares")
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  type      String
+  title     String
+  content   String?
+  payload   Json?
+  isRead    Boolean   @default(false) @map("is_read")
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+model UserIntegration {
+  id                    String              @id @default(uuid())
+  userId                String              @map("user_id")
+  provider              IntegrationProvider
+  accessTokenEncrypted  String              @map("access_token_encrypted")
+  refreshTokenEncrypted String?             @map("refresh_token_encrypted")
+  providerUserId        String              @map("provider_user_id")
+  providerUsername      String?             @map("provider_username")
+  providerData          Json?               @map("provider_data")
+  expiresAt             DateTime?           @map("expires_at")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, provider])
+  @@map("user_integrations")
+}
+
+model Schedule {
+  id             String       @id @default(uuid())
+  creatorId      String       @map("creator_id")
+  type           ScheduleType
+  title          String
+  description    String?
+  cronExpression String?      @map("cron_expression")
+  scheduledAt    DateTime?    @map("scheduled_at")
+  config         Json?
+  isActive       Boolean      @default(true) @map("is_active")
+  lastRunAt      DateTime?    @map("last_run_at")
+  nextRunAt      DateTime?    @map("next_run_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  // Relations
+  creator       User           @relation(fields: [creatorId], references: [id])
+  teamSchedules TeamSchedule[]
+
+  @@map("schedules")
+}
+
+model TeamSchedule {
+  id         String   @id @default(uuid())
+  scheduleId String   @map("schedule_id")
+  teamId     String   @map("team_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // Relations
+  schedule Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  team     Team     @relation(fields: [teamId], references: [id])
+
+  @@map("team_schedules")
+}
+
+model TeamShare {
+  id             String   @id @default(uuid())
+  fromTeamId     String   @map("from_team_id")
+  toTeamId       String   @map("to_team_id")
+  shareTasks     Boolean  @default(false) @map("share_tasks")
+  shareSchedules Boolean  @default(false) @map("share_schedules")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  // Relations
+  fromTeam Team @relation("ShareFrom", fields: [fromTeamId], references: [id])
+  toTeam   Team @relation("ShareTo", fields: [toTeamId], references: [id])
+
+  @@map("team_shares")
+}
+
+model NetworkWhitelist {
+  id          String   @id @default(uuid())
+  cidr        String
+  description String?
+  isEnabled   Boolean  @default(true) @map("is_enabled")
+  createdBy   String   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  creator User @relation(fields: [createdBy], references: [id])
+
+  @@map("network_whitelist")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?  @map("user_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  oldData    Json?    @map("old_data")
+  newData    Json?    @map("new_data")
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  tokenHash String   @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  isRevoked Boolean  @default(false) @map("is_revoked")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("refresh_tokens")
+}
