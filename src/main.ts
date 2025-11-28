@@ -24,8 +24,22 @@ async function bootstrap() {
   app.setGlobalPrefix('api/v1');
 
   // CORS 설정 - 프론트엔드 도메인에서의 요청 허용
+  const allowedOrigins = [
+    frontendUrl,
+    'http://localhost:3000',
+    'http://localhost:8080',
+  ].filter(Boolean);
+
   app.enableCors({
-    origin: frontendUrl,
+    origin: (origin, callback) => {
+      // 개발 환경에서 origin이 없는 경우 (Postman, curl 등) 허용
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.some(allowed => origin.startsWith(allowed.replace(/\/$/, '')))) {
+        return callback(null, true);
+      }
+      callback(new Error('Not allowed by CORS'));
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
