@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   ParseUUIDPipe,
 } from '@nestjs/common';
 import {
@@ -14,6 +15,7 @@ import {
   ApiResponse,
   ApiBearerAuth,
   ApiParam,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { TeamsService } from './teams.service';
 import { CreateTeamDto, UpdateTeamDto, AddMemberDto, CreateTeamShareDto, UpdateTeamShareDto } from './dto';
@@ -374,5 +376,51 @@ export class TeamsController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.teamsService.getSharedSchedules(id, user);
+  }
+
+  // ==================== 팀원별 작업량 통계 API ====================
+
+  /**
+   * 팀원별 작업량 통계 조회 API
+   */
+  @ApiOperation({
+    summary: '팀원별 작업량 통계',
+    description: `
+팀원별 완료된 업무 수, 진행 중인 업무 수 등을 조회합니다.
+
+### 반환 정보
+- 팀원별 완료 업무 수
+- 팀원별 진행 중 업무 수
+- 팀원별 할당된 업무 수
+- 팀원별 생성한 업무 수
+    `,
+  })
+  @ApiParam({ name: 'id', description: '팀 UUID' })
+  @ApiQuery({ name: 'days', description: '조회 기간 (일)', required: false })
+  @ApiResponse({ status: 200, description: '팀원별 통계 반환' })
+  @Get(':id/stats')
+  getMemberStats(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('days') days?: string,
+  ) {
+    return this.teamsService.getMemberStats(id, days ? parseInt(days, 10) : 30);
+  }
+
+  /**
+   * 팀원별 일별 작업량 통계 조회 API (그래프용)
+   */
+  @ApiOperation({
+    summary: '팀원별 일별 작업량 통계 (그래프용)',
+    description: '팀원별 일별 완료 업무 수를 조회합니다. 그래프 렌더링에 사용됩니다.',
+  })
+  @ApiParam({ name: 'id', description: '팀 UUID' })
+  @ApiQuery({ name: 'days', description: '조회 기간 (일)', required: false })
+  @ApiResponse({ status: 200, description: '팀원별 일별 통계 반환' })
+  @Get(':id/stats/daily')
+  getMemberDailyStats(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('days') days?: string,
+  ) {
+    return this.teamsService.getMemberDailyStats(id, days ? parseInt(days, 10) : 14);
   }
 }

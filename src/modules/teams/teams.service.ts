@@ -616,4 +616,187 @@ export class TeamsService {
 
     return schedules;
   }
+
+  /**
+   * 팀원별 작업량 통계 조회
+   * 최근 7일/30일간 완료된 업무 수를 팀원별로 집계
+   */
+  async getMemberStats(teamId: string, days: number = 30) {
+    const team = await this.prisma.team.findUnique({
+      where: { id: teamId },
+    });
+
+    if (!team) {
+      throw new NotFoundException(ErrorCodes.NOT_FOUND);
+    }
+
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    startDate.setHours(0, 0, 0, 0);
+
+    // 팀원 목록 조회
+    const members = await this.prisma.user.findMany({
+      where: { teamId },
+      select: {
+        id: true,
+        name: true,
+        profileImageUrl: true,
+      },
+    });
+
+    // 각 팀원별 완료된 업무 수 집계
+    const stats = await Promise.all(
+      members.map(async (member) => {
+        // 완료된 업무 수
+        const completedTasks = await this.prisma.task.count({
+          where: {
+            assigneeId: member.id,
+            status: 'DONE',
+            completedAt: {
+              gte: startDate,
+            },
+          },
+        });
+
+        // 진행 중인 업무 수
+        const inProgressTasks = await this.prisma.task.count({
+          where: {
+            assigneeId: member.id,
+            status: 'IN_PROGRESS',
+          },
+        });
+
+        // 전체 할당된 업무 수
+        const totalAssigned = await this.prisma.task.count({
+          where: {
+            assigneeId: member.id,
+            createdAt: {
+              gte: startDate,
+            },
+          },
+        });
+
+        // 생성한 업무 수
+        const createdTasks = await this.prisma.task.count({
+          where: {
+            creatorId: member.id,
+            createdAt: {
+              gte: startDate,
+            },
+          },
+        });
+
+        return {
+          member: {
+            id: member.id,
+            name: member.name,
+            profileImageUrl: member.profileImageUrl,
+          },
+          completedTasks,
+          inProgressTasks,
+          totalAssigned,
+          createdTasks,
+        };
+      }),
+    );
+
+    // 완료된 업무 수 기준 내림차순 정렬
+    stats.sort((a, b) => b.completedTasks - a.completedTasks);
+
+    return {
+      teamId,
+      teamName: team.name,
+      period: {
+        days,
+        startDate: startDate.toISOString(),
+        endDate: new Date().toISOString(),
+      },
+      stats,
+    };
+  }
+
+  /**
+   * 팀원별 일별 작업량 통계 (그래프용)
+   */
+  async getMemberDailyStats(teamId: string, days: number = 14) {
+    const team = await this.prisma.team.findUnique({
+      where: { id: teamId },
+    });
+
+    if (!team) {
+      throw new NotFoundException(ErrorCodes.NOT_FOUND);
+    }
+
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    startDate.setHours(0, 0, 0, 0);
+
+    // 팀원 목록
+    const members = await this.prisma.user.findMany({
+      where: { teamId },
+      select: {
+        id: true,
+        name: true,
+        profileImageUrl: true,
+      },
+    });
+
+    // 날짜 범위 생성
+    const dates: string[] = [];
+    for (let i = 0; i < days; i++) {
+      const date = new Date(startDate);
+      date.setDate(date.getDate() + i);
+      dates.push(date.toISOString().split('T')[0]);
+    }
+
+    // 각 팀원별 일별 완료 업무 집계
+    const memberDailyStats = await Promise.all(
+      members.map(async (member) => {
+        const completedTasks = await this.prisma.task.findMany({
+          where: {
+            assigneeId: member.id,
+            status: 'DONE',
+            completedAt: {
+              gte: startDate,
+            },
+          },
+          select: {
+            completedAt: true,
+          },
+        });
+
+        // 날짜별 집계
+        const dailyCounts: Record<string, number> = {};
+        dates.forEach((date) => (dailyCounts[date] = 0));
+
+        completedTasks.forEach((task) => {
+          if (task.completedAt) {
+            const dateKey = task.completedAt.toISOString().split('T')[0];
+            if (dailyCounts[dateKey] !== undefined) {
+              dailyCounts[dateKey]++;
+            }
+          }
+        });
+
+        return {
+          member: {
+            id: member.id,
+            name: member.name,
+            profileImageUrl: member.profileImageUrl,
+          },
+          dailyStats: dates.map((date) => ({
+            date,
+            count: dailyCounts[date],
+          })),
+        };
+      }),
+    );
+
+    return {
+      teamId,
+      teamName: team.name,
+      dates,
+      memberDailyStats,
+    };
+  }
 }
