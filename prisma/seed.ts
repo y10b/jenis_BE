@@ -6,21 +6,7 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('Seeding database...');
 
-  // Create default team
-  const defaultTeam = await prisma.team.upsert({
-    where: { id: 'default-team-id' },
-    update: {},
-    create: {
-      id: 'default-team-id',
-      name: 'Core Team',
-      description: '핵심 팀',
-      ownerId: 'owner-user-id',
-    },
-  });
-
-  console.log('Created default team:', defaultTeam.name);
-
-  // Create owner user
+  // Create owner user first (without team)
   const ownerPassword = await bcrypt.hash('Owner123!', 10);
   const owner = await prisma.user.upsert({
     where: { email: 'owner@company.com' },
@@ -32,16 +18,29 @@ async function main() {
       name: '대표',
       role: UserRole.OWNER,
       status: UserStatus.ACTIVE,
-      teamId: defaultTeam.id,
     },
   });
 
   console.log('Created owner user:', owner.email);
 
-  // Update team owner
-  await prisma.team.update({
-    where: { id: defaultTeam.id },
-    data: { ownerId: owner.id },
+  // Create default team with owner
+  const defaultTeam = await prisma.team.upsert({
+    where: { id: 'default-team-id' },
+    update: {},
+    create: {
+      id: 'default-team-id',
+      name: 'Core Team',
+      description: '핵심 팀',
+      ownerId: owner.id,
+    },
+  });
+
+  console.log('Created default team:', defaultTeam.name);
+
+  // Update owner with team
+  await prisma.user.update({
+    where: { id: owner.id },
+    data: { teamId: defaultTeam.id },
   });
 
   // Create sample users

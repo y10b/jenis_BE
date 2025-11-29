@@ -224,12 +224,14 @@ export class AuthService {
   }
 
   getCookieOptions(type: 'access' | 'refresh') {
-    const isProduction = this.configService.get<string>('app.env') === 'production';
+    const nodeEnv = this.configService.get<string>('app.env') || process.env.NODE_ENV;
+    const isProduction = nodeEnv === 'production';
 
     const baseOptions = {
       httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? ('strict' as const) : ('lax' as const),
+      // 크로스 도메인 쿠키 전송을 위해 secure와 sameSite 설정
+      secure: true, // HTTPS 필수 (Render, Vercel 모두 HTTPS 사용)
+      sameSite: 'none' as const, // 크로스 도메인 쿠키 전송 허용
     };
 
     if (type === 'access') {
