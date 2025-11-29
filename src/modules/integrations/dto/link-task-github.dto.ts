@@ -158,3 +158,112 @@ export class CreateGithubBranchDto {
   @IsString()
   baseBranch?: string;
 }
+
+/**
+ * Git 이력 기반 이슈 생성 DTO
+ *
+ * Git 커밋 이력을 분석하여 GitHub 이슈를 자동 생성합니다.
+ */
+export class CreateIssueFromGitLogDto {
+  /**
+   * GitHub 리포지토리
+   */
+  @ApiProperty({
+    description: 'GitHub 리포지토리 경로 (owner/repo 형식)',
+    example: 'mycompany/backend-api',
+  })
+  @IsString()
+  repo: string;
+
+  /**
+   * 이슈 제목
+   */
+  @ApiProperty({
+    description: '이슈 제목',
+    example: '[Feature] 사용자 인증 기능 구현',
+  })
+  @IsString()
+  title: string;
+
+  /**
+   * 이슈 본문 (Git 이력 기반으로 생성된 내용)
+   */
+  @ApiProperty({
+    description: '이슈 본문 (Git 이력 분석 결과 포함)',
+    example: '## 관련 커밋\n- abc1234: 로그인 API 구현\n- def5678: 회원가입 API 구현',
+  })
+  @IsString()
+  body: string;
+
+  /**
+   * 라벨 (선택)
+   */
+  @ApiPropertyOptional({
+    description: '이슈에 추가할 라벨 목록',
+    example: ['enhancement', 'documentation'],
+  })
+  @IsOptional()
+  @IsString({ each: true })
+  labels?: string[];
+}
+
+/**
+ * PR 템플릿 생성 요청 DTO
+ *
+ * Git diff를 분석하여 PR 템플릿을 생성합니다.
+ */
+export class GeneratePRTemplateDto {
+  /**
+   * GitHub 리포지토리
+   */
+  @ApiProperty({
+    description: 'GitHub 리포지토리 경로 (owner/repo 형식)',
+    example: 'mycompany/backend-api',
+  })
+  @IsString()
+  repo: string;
+
+  /**
+   * 소스 브랜치 (PR을 보낼 브랜치)
+   */
+  @ApiProperty({
+    description: '소스 브랜치 (변경사항이 있는 브랜치)',
+    example: 'feature/user-auth',
+  })
+  @IsString()
+  sourceBranch: string;
+
+  /**
+   * 타겟 브랜치 (PR을 받을 브랜치)
+   */
+  @ApiPropertyOptional({
+    description: '타겟 브랜치. 기본값: main',
+    example: 'main',
+    default: 'main',
+  })
+  @IsOptional()
+  @IsString()
+  targetBranch?: string;
+
+  /**
+   * 커밋 메시지 목록 (프론트에서 수집)
+   */
+  @ApiPropertyOptional({
+    description: '분석할 커밋 메시지 목록',
+    example: ['feat: 로그인 API 구현', 'fix: 토큰 만료 버그 수정'],
+  })
+  @IsOptional()
+  @IsString({ each: true })
+  commits?: string[];
+
+  /**
+   * 변경된 파일 목록 (프론트에서 수집)
+   */
+  @ApiPropertyOptional({
+    description: '변경된 파일 경로 목록',
+    example: ['src/auth/auth.service.ts', 'src/auth/auth.controller.ts'],
+  })
+  @IsOptional()
+  @IsString({ each: true })
+  changedFiles?: string[];
+}

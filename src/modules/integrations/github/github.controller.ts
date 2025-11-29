@@ -8,6 +8,7 @@ import {
   Param,
   ParseUUIDPipe,
   Res,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -16,6 +17,7 @@ import {
   ApiBearerAuth,
   ApiParam,
   ApiExcludeEndpoint,
+  ApiQuery,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { GithubService } from './github.service';
@@ -26,8 +28,11 @@ import {
   LinkTaskGithubDto,
   CreateGithubIssueDto,
   CreateGithubBranchDto,
+  CreateIssueFromGitLogDto,
+  GeneratePRTemplateDto,
 } from '../dto';
 import { ConfigService } from '@nestjs/config';
+import { Kr2TeamGuard } from '../../../common/guards';
 
 /**
  * GitHub 통합 컨트롤러
@@ -260,5 +265,134 @@ baseBranch를 지정하지 않으면 기본 브랜치(main/master)에서 생성�
     @CurrentUser() user: RequestUser,
   ) {
     return this.githubService.getTaskGithubInfo(taskId, user);
+  }
+
+  // ==================== KR2팀 전용 API ====================
+
+  /**
+   * Git 이력 기반 이슈 생성 API (KR2팀 전용)
+   */
+  @ApiOperation({
+    summary: '[KR2팀] Git 이력 기반 이슈 생성',
+    description: `
+Git 커밋 이력을 분석하여 GitHub 이슈를 자동 생성합니다.
+
+### 권한
+- KR2팀 소속 사용자 또는 OWNER만 접근 가능
+
+### 사용 시나리오
+- 로컬에서 작업한 커밋 이력을 기반으로 이슈 생성
+- 프론트엔드에서 git log를 분석하여 이슈 내용 자동 생성
+    `,
+  })
+  @ApiResponse({ status: 201, description: '이슈 생성 성공' })
+  @ApiResponse({ status: 403, description: 'KR2팀이 아님' })
+  @Post('kr2/create-issue')
+  @UseGuards(Kr2TeamGuard)
+  createIssueFromGitLog(
+    @Body() dto: CreateIssueFromGitLogDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.githubService.createIssueFromGitLog(dto, user);
+  }
+
+  /**
+   * PR 템플릿 생성 API (KR2팀 전용)
+   */
+  @ApiOperation({
+    summary: '[KR2팀] PR 템플릿 생성',
+    description: `
+Git 변경사항을 분석하여 PR 템플릿을 생성합니다.
+
+### 권한
+- KR2팀 소속 사용자 또는 OWNER만 접근 가능
+
+### 반환 정보
+- template: PR 본문 템플릿 (마크다운)
+- prCreateUrl: GitHub PR 생성 페이지 URL
+- summary: 변경사항 요약 (커밋 수, 파일 수, 변경 유형)
+
+### 사용 방법
+1. 프론트에서 git log와 git diff를 실행하여 정보 수집
+2. 이 API를 호출하여 PR 템플릿 생성
+3. 사용자가 prCreateUrl로 이동하여 PR 작성
+    `,
+  })
+  @ApiResponse({ status: 201, description: 'PR 템플릿 생성 성공' })
+  @ApiResponse({ status: 403, description: 'KR2팀이 아님' })
+  @Post('kr2/generate-pr-template')
+  @UseGuards(Kr2TeamGuard)
+  generatePRTemplate(
+    @Body() dto: GeneratePRTemplateDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.githubService.generatePRTemplate(dto, user);
+  }
+
+  /**
+   * 리포지토리 브랜치 목록 조회 API (KR2팀 전용)
+   */
+  @ApiOperation({
+    summary: '[KR2팀] 브랜치 목록 조회',
+    description: `
+특정 리포지토리의 브랜치 목록을 조회합니다.
+
+### 권한
+- KR2팀 소속 사용자 또는 OWNER만 접근 가능
+    `,
+  })
+  @ApiQuery({ name: 'repo', description: '리포지토리 경로 (owner/repo)', required: true })
+  @ApiResponse({ status: 200, description: '브랜치 목록 반환' })
+  @ApiResponse({ status: 403, description: 'KR2팀이 아님' })
+  @Get('kr2/branches')
+  @UseGuards(Kr2TeamGuard)
+  getBranches(
+    @Query('repo') repo: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.githubService.getBranches(repo, user);
+  }
+
+  /**
+   * 리포지토리 정보 조회 API (KR2팀 전용)
+   */
+  @ApiOperation({
+    summary: '[KR2팀] 리포지토리 정보 조회',
+    description: `
+리포지토리의 remote URL 및 기본 브랜치 정보를 조회합니다.
+
+### 권한
+- KR2팀 소속 사용자 또는 OWNER만 접근 가능
+    `,
+  })
+  @ApiQuery({ name: 'repo', description: '리포지토리 경로 (owner/repo)', required: true })
+  @ApiResponse({ status: 200, description: '리포지토리 정보 반환' })
+  @ApiResponse({ status: 403, description: 'KR2팀이 아님' })
+  @Get('kr2/repo-info')
+  @UseGuards(Kr2TeamGuard)
+  getRepoInfo(
+    @Query('repo') repo: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.githubService.getRepoRemoteUrl(repo, user);
+  }
+
+  /**
+   * KR2팀 접근 권한 확인 API
+   */
+  @ApiOperation({
+    summary: 'KR2팀 기능 접근 권한 확인',
+    description: `
+현재 사용자가 KR2팀 전용 기능에 접근할 수 있는지 확인합니다.
+
+### 반환 정보
+- hasAccess: 접근 가능 여부
+- teamName: 소속 팀 이름 (있는 경우)
+    `,
+  })
+  @ApiResponse({ status: 200, description: '권한 정보 반환' })
+  @Get('kr2/check-access')
+  async checkKr2Access(@CurrentUser() user: RequestUser) {
+    return this.githubService.checkKr2Access(user);
   }
 }

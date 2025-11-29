@@ -14,6 +14,8 @@ import {
   LinkTaskGithubDto,
   CreateGithubIssueDto,
   CreateGithubBranchDto,
+  CreateIssueFromGitLogDto,
+  GeneratePRTemplateDto,
 } from '../dto';
 
 interface GithubTokenResponse {
@@ -458,5 +460,336 @@ export class GithubService {
     }
 
     return CryptoUtil.decrypt(integration.accessTokenEncrypted);
+  }
+
+  /**
+   * Git 이력 기반으로 GitHub 이슈 생성
+   * KR2팀 전용 기능
+   */
+  async createIssueFromGitLog(dto: CreateIssueFromGitLogDto, user: RequestUser) {
+    const accessToken = await this.getAccessToken(user.id);
+
+    const issueBody = {
+      title: dto.title,
+      body: dto.body,
+      labels: dto.labels || [],
+    };
+
+    const response = await fetch(`https://api.github.com/repos/${dto.repo}/issues`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(issueBody),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      this.logger.error(`GitHub API error: ${JSON.stringify(error)}`);
+      throw new BadRequestException(ErrorCodes.GITHUB_ERROR);
+    }
+
+    const issue = await response.json();
+
+    this.logger.log(`Issue created from git log: #${issue.number} by ${user.email}`);
+
+    return {
+      issueNumber: issue.number,
+      issueUrl: issue.html_url,
+      title: issue.title,
+    };
+  }
+
+  /**
+   * PR 템플릿 생성
+   * 커밋 메시지와 변경 파일을 분석하여 PR 템플릿 생성
+   */
+  async generatePRTemplate(dto: GeneratePRTemplateDto, user: RequestUser) {
+    const accessToken = await this.getAccessToken(user.id);
+    const targetBranch = dto.targetBranch || 'main';
+
+    // GitHub에서 비교 정보 가져오기 (commits, files)
+    let commits = dto.commits || [];
+    let changedFiles = dto.changedFiles || [];
+
+    // 프론트에서 제공하지 않은 경우 GitHub API로 가져오기
+    if (commits.length === 0 || changedFiles.length === 0) {
+      try {
+        const compareResponse = await fetch(
+          `https://api.github.com/repos/${dto.repo}/compare/${targetBranch}...${dto.sourceBranch}`,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              Accept: 'application/vnd.github.v3+json',
+            },
+          },
+        );
+
+        if (compareResponse.ok) {
+          const compareData = await compareResponse.json();
+
+          if (commits.length === 0) {
+            commits = compareData.commits?.map((c: any) => c.commit.message) || [];
+          }
+
+          if (changedFiles.length === 0) {
+            changedFiles = compareData.files?.map((f: any) => f.filename) || [];
+          }
+        }
+      } catch (e) {
+        this.logger.warn(`Failed to fetch compare data: ${e}`);
+      }
+    }
+
+    // 커밋 메시지 분석하여 변경 유형 파악
+    const changeTypes = this.analyzeCommitMessages(commits);
+
+    // 파일 변경 통계
+    const fileStats = this.analyzeChangedFiles(changedFiles);
+
+    // PR 템플릿 생성
+    const template = this.buildPRTemplate({
+      sourceBranch: dto.sourceBranch,
+      targetBranch,
+      commits,
+      changedFiles,
+      changeTypes,
+      fileStats,
+    });
+
+    // PR 생성 URL 구성
+    const prCreateUrl = `https://github.com/${dto.repo}/compare/${targetBranch}...${dto.sourceBranch}?expand=1`;
+
+    return {
+      template,
+      prCreateUrl,
+      summary: {
+        totalCommits: commits.length,
+        totalFiles: changedFiles.length,
+        changeTypes,
+        fileStats,
+      },
+    };
+  }
+
+  /**
+   * 커밋 메시지 분석
+   */
+  private analyzeCommitMessages(commits: string[]): Record<string, number> {
+    const types: Record<string, number> = {
+      feat: 0,
+      fix: 0,
+      docs: 0,
+      style: 0,
+      refactor: 0,
+      test: 0,
+      chore: 0,
+      other: 0,
+    };
+
+    for (const commit of commits) {
+      const lowerCommit = commit.toLowerCase();
+      if (lowerCommit.startsWith('feat') || lowerCommit.includes('feature')) {
+        types.feat++;
+      } else if (lowerCommit.startsWith('fix') || lowerCommit.includes('bug')) {
+        types.fix++;
+      } else if (lowerCommit.startsWith('docs') || lowerCommit.includes('document')) {
+        types.docs++;
+      } else if (lowerCommit.startsWith('style')) {
+        types.style++;
+      } else if (lowerCommit.startsWith('refactor')) {
+        types.refactor++;
+      } else if (lowerCommit.startsWith('test')) {
+        types.test++;
+      } else if (lowerCommit.startsWith('chore')) {
+        types.chore++;
+      } else {
+        types.other++;
+      }
+    }
+
+    // 0인 항목 제거
+    return Object.fromEntries(Object.entries(types).filter(([_, v]) => v > 0));
+  }
+
+  /**
+   * 변경 파일 분석
+   */
+  private analyzeChangedFiles(files: string[]): Record<string, number> {
+    const stats: Record<string, number> = {};
+
+    for (const file of files) {
+      const ext = file.split('.').pop()?.toLowerCase() || 'other';
+      stats[ext] = (stats[ext] || 0) + 1;
+    }
+
+    return stats;
+  }
+
+  /**
+   * PR 템플릿 빌드
+   */
+  private buildPRTemplate(data: {
+    sourceBranch: string;
+    targetBranch: string;
+    commits: string[];
+    changedFiles: string[];
+    changeTypes: Record<string, number>;
+    fileStats: Record<string, number>;
+  }): string {
+    const { sourceBranch, targetBranch, commits, changedFiles, changeTypes, fileStats } = data;
+
+    // PR 제목 추천
+    const dominantType = Object.entries(changeTypes).sort((a, b) => b[1] - a[1])[0];
+    const typePrefix = dominantType ? dominantType[0] : 'update';
+    const branchName = sourceBranch.replace(/^(feature|fix|hotfix)\//, '').replace(/-/g, ' ');
+
+    let template = `## ${typePrefix}: ${branchName}\n\n`;
+
+    // 요약
+    template += `### Summary\n`;
+    template += `- **Branch**: \`${sourceBranch}\` → \`${targetBranch}\`\n`;
+    template += `- **Commits**: ${commits.length}\n`;
+    template += `- **Files Changed**: ${changedFiles.length}\n\n`;
+
+    // 변경 유형
+    if (Object.keys(changeTypes).length > 0) {
+      template += `### Change Types\n`;
+      for (const [type, count] of Object.entries(changeTypes)) {
+        const emoji = this.getTypeEmoji(type);
+        template += `- ${emoji} ${type}: ${count}\n`;
+      }
+      template += '\n';
+    }
+
+    // 커밋 목록
+    if (commits.length > 0) {
+      template += `### Commits\n`;
+      for (const commit of commits.slice(0, 10)) {
+        const firstLine = commit.split('\n')[0];
+        template += `- ${firstLine}\n`;
+      }
+      if (commits.length > 10) {
+        template += `- ... and ${commits.length - 10} more commits\n`;
+      }
+      template += '\n';
+    }
+
+    // 변경 파일 목록
+    if (changedFiles.length > 0) {
+      template += `### Changed Files\n`;
+      template += `<details>\n<summary>View ${changedFiles.length} changed files</summary>\n\n`;
+      for (const file of changedFiles.slice(0, 20)) {
+        template += `- \`${file}\`\n`;
+      }
+      if (changedFiles.length > 20) {
+        template += `- ... and ${changedFiles.length - 20} more files\n`;
+      }
+      template += `</details>\n\n`;
+    }
+
+    // 체크리스트
+    template += `### Checklist\n`;
+    template += `- [ ] 코드 리뷰 요청\n`;
+    template += `- [ ] 테스트 완료\n`;
+    template += `- [ ] 문서 업데이트 (필요한 경우)\n`;
+
+    return template;
+  }
+
+  private getTypeEmoji(type: string): string {
+    const emojis: Record<string, string> = {
+      feat: '✨',
+      fix: '🐛',
+      docs: '📝',
+      style: '💄',
+      refactor: '♻️',
+      test: '✅',
+      chore: '🔧',
+      other: '📦',
+    };
+    return emojis[type] || '📦';
+  }
+
+  /**
+   * 리포지토리의 remote URL 조회
+   */
+  async getRepoRemoteUrl(repo: string, user: RequestUser) {
+    const accessToken = await this.getAccessToken(user.id);
+
+    const response = await fetch(`https://api.github.com/repos/${repo}`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/vnd.github.v3+json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new BadRequestException(ErrorCodes.GITHUB_ERROR);
+    }
+
+    const repoData = await response.json();
+
+    return {
+      htmlUrl: repoData.html_url,
+      cloneUrl: repoData.clone_url,
+      sshUrl: repoData.ssh_url,
+      defaultBranch: repoData.default_branch,
+    };
+  }
+
+  /**
+   * 브랜치 목록 조회
+   */
+  async getBranches(repo: string, user: RequestUser) {
+    const accessToken = await this.getAccessToken(user.id);
+
+    const response = await fetch(`https://api.github.com/repos/${repo}/branches?per_page=100`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/vnd.github.v3+json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new BadRequestException(ErrorCodes.GITHUB_ERROR);
+    }
+
+    const branches = await response.json();
+    return branches.map((b: any) => ({
+      name: b.name,
+      protected: b.protected,
+    }));
+  }
+
+  /**
+   * KR2팀 접근 권한 확인
+   */
+  async checkKr2Access(user: RequestUser) {
+    // OWNER는 항상 접근 가능
+    if (user.role === 'OWNER') {
+      return { hasAccess: true, teamName: null, isOwner: true };
+    }
+
+    if (!user.teamId) {
+      return { hasAccess: false, teamName: null, isOwner: false };
+    }
+
+    // 팀 이름 조회
+    const team = await this.prisma.team.findUnique({
+      where: { id: user.teamId },
+      select: { name: true },
+    });
+
+    const isKr2Team = team?.name === 'KR2';
+
+    return {
+      hasAccess: isKr2Team,
+      teamName: team?.name || null,
+      teamId: user.teamId,
+      isOwner: false,
+    };
   }
 }

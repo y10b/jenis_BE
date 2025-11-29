@@ -231,6 +231,33 @@ export class TeamsController {
     return this.teamsService.removeMember(id, userId, user);
   }
 
+  /**
+   * 팀원 이동 API
+   */
+  @ApiOperation({
+    summary: '팀원 다른 팀으로 이동',
+    description: `
+팀원을 다른 팀으로 이동합니다.
+
+### 권한
+- OWNER만 접근 가능
+    `,
+  })
+  @ApiParam({ name: 'id', description: '현재 팀 UUID' })
+  @ApiParam({ name: 'userId', description: '이동할 사용자 UUID' })
+  @ApiParam({ name: 'toTeamId', description: '이동 대상 팀 UUID' })
+  @ApiResponse({ status: 200, description: '팀원 이동 성공' })
+  @Patch(':id/members/:userId/transfer/:toTeamId')
+  @Roles(UserRole.OWNER)
+  transferMember(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Param('toTeamId', ParseUUIDPipe) toTeamId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.teamsService.transferMember(id, userId, toTeamId, user);
+  }
+
   // ==================== 팀 간 공유 API ====================
 
   /**

@@ -290,6 +290,71 @@ export class TeamsService {
     return this.findOne(user.teamId, user);
   }
 
+  async transferMember(fromTeamId: string, userId: string, toTeamId: string, user: RequestUser) {
+    // Only OWNER can transfer members
+    if (user.role !== UserRole.OWNER) {
+      throw new ForbiddenException(ErrorCodes.FORBIDDEN);
+    }
+
+    const fromTeam = await this.prisma.team.findUnique({
+      where: { id: fromTeamId },
+    });
+
+    if (!fromTeam) {
+      throw new NotFoundException(ErrorCodes.TEAM_NOT_FOUND);
+    }
+
+    const toTeam = await this.prisma.team.findUnique({
+      where: { id: toTeamId },
+    });
+
+    if (!toTeam) {
+      throw new NotFoundException(ErrorCodes.TEAM_NOT_FOUND);
+    }
+
+    const targetUser = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!targetUser) {
+      throw new NotFoundException(ErrorCodes.USER_NOT_FOUND);
+    }
+
+    if (targetUser.teamId !== fromTeamId) {
+      throw new ConflictException(ErrorCodes.USER_NOT_IN_TEAM);
+    }
+
+    // Cannot transfer team owner
+    if (fromTeam.ownerId === userId) {
+      throw new ForbiddenException(ErrorCodes.CANNOT_REMOVE_TEAM_OWNER);
+    }
+
+    // Cannot transfer OWNER role users
+    if (targetUser.role === UserRole.OWNER) {
+      throw new ForbiddenException(ErrorCodes.FORBIDDEN);
+    }
+
+    const updatedUser = await this.prisma.user.update({
+      where: { id: userId },
+      data: { teamId: toTeamId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        status: true,
+        teamId: true,
+      },
+    });
+
+    // Send notification to the transferred user
+    await this.notificationsService.notifyTeamInvite(userId, toTeam.name, user.name);
+
+    this.logger.log(`User ${targetUser.email} transferred from ${fromTeam.name} to ${toTeam.name} by ${user.email}`);
+
+    return updatedUser;
+  }
+
   async getTeamMembers(teamId: string, user: RequestUser) {
     const team = await this.prisma.team.findUnique({
       where: { id: teamId },
