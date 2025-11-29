@@ -35,7 +35,7 @@ async function bootstrap() {
       // 개발 환경에서 origin이 없는 경우 (Postman, curl 등) 허용
       if (!origin) return callback(null, true);
 
-      if (allowedOrigins.some(allowed => origin.startsWith(allowed.replace(/\/$/, '')))) {
+      if (allowedOrigins.some(allowed => allowed && origin.startsWith(allowed.replace(/\/$/, '')))) {
         return callback(null, true);
       }
       callback(new Error('Not allowed by CORS'));
