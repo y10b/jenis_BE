@@ -17,6 +17,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { SchedulesModule } from './modules/schedules/schedules.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { NetworkWhitelistModule } from './modules/network-whitelist/network-whitelist.module';
+import { AttendanceModule } from './modules/attendance/attendance.module';
 import { HttpExceptionFilter, PrismaExceptionFilter } from './common/filters';
 import { TransformInterceptor } from './common/interceptors';
 import { JwtAuthGuard, RolesGuard } from './common/guards';
@@ -40,6 +41,7 @@ import { JwtAuthGuard, RolesGuard } from './common/guards';
     SchedulesModule,
     AuditModule,
     NetworkWhitelistModule,
+    AttendanceModule,
   ],
   providers: [
     // Global exception filters

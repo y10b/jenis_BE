@@ -71,6 +71,11 @@ enum ScheduleType {
   REPORT
 }
 
+enum AttendanceType {
+  CHECK_IN
+  CHECK_OUT
+}
+
 // ============================================
 // MODELS
 // ============================================
@@ -102,6 +107,7 @@ model User {
   createdNetworkEntries NetworkWhitelist[]
   ownedTeams            Team[]                @relation("TeamOwner")
   retrospectiveShares   RetrospectiveShare[]
+  attendances           Attendance[]
 
   @@index([email])
   @@index([teamId])
@@ -390,4 +396,19 @@ model RefreshToken {
   user User @relation(fields: [userId], references: [id])
 
   @@map("refresh_tokens")
+}
+
+model Attendance {
+  id        String         @id @default(uuid())
+  userId    String         @map("user_id")
+  type      AttendanceType
+  note      String?
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("attendances")
 }
