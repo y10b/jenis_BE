@@ -765,9 +765,11 @@ export class GithubService {
   }
 
   /**
-   * KR2팀 접근 권한 확인
+   * 개발팀(KR2, KR3) 접근 권한 확인
    */
   async checkKr2Access(user: RequestUser) {
+    const DEV_TEAM_NAMES = ['KR2', 'KR3'];
+
     // OWNER는 항상 접근 가능
     if (user.role === 'OWNER') {
       return { hasAccess: true, teamName: null, isOwner: true };
@@ -783,10 +785,10 @@ export class GithubService {
       select: { name: true },
     });
 
-    const isKr2Team = team?.name === 'KR2';
+    const isDevTeam = team?.name ? DEV_TEAM_NAMES.includes(team.name) : false;
 
     return {
-      hasAccess: isKr2Team,
+      hasAccess: isDevTeam,
       teamName: team?.name || null,
       teamId: user.teamId,
       isOwner: false,
