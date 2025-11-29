@@ -4,7 +4,6 @@ import {
   Post,
   Body,
   Query,
-  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -14,16 +13,12 @@ import {
 } from '@nestjs/swagger';
 import { AttendanceService } from './attendance.service';
 import { CreateAttendanceDto } from './dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { RequestUser } from '../../common/interfaces';
+import { CurrentUser, Roles } from '../../common/decorators';
+import type { RequestUser } from '../../common/interfaces';
 import { UserRole } from '@prisma/client';
 
 @ApiTags('Attendance')
 @ApiBearerAuth('accessToken')
-@UseGuards(JwtAuthGuard)
 @Controller('attendance')
 export class AttendanceController {
   constructor(private readonly attendanceService: AttendanceService) {}
@@ -57,7 +52,6 @@ export class AttendanceController {
   @ApiQuery({ name: 'teamId', required: false, description: '팀 ID' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
-  @UseGuards(RolesGuard)
   @Roles(UserRole.OWNER, UserRole.HEAD, UserRole.LEAD)
   @Get()
   async findAll(
