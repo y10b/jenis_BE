@@ -81,16 +81,17 @@ enum AttendanceType {
 // ============================================
 
 model User {
-  id              String     @id @default(uuid())
-  email           String     @unique
-  passwordHash    String     @map("password_hash")
-  name            String
-  role            UserRole   @default(ACTOR)
-  teamId          String?    @map("team_id")
-  status          UserStatus @default(PENDING)
-  profileImageUrl String?    @map("profile_image_url")
-  createdAt       DateTime   @default(now()) @map("created_at")
-  updatedAt       DateTime   @updatedAt @map("updated_at")
+  id                  String     @id @default(uuid())
+  email               String     @unique
+  passwordHash        String     @map("password_hash")
+  name                String
+  role                UserRole   @default(ACTOR)
+  teamId              String?    @map("team_id")
+  status              UserStatus @default(PENDING)
+  profileImageUrl     String?    @map("profile_image_url")
+  slackReportTemplate String?    @map("slack_report_template") @db.Text
+  createdAt           DateTime   @default(now()) @map("created_at")
+  updatedAt           DateTime   @updatedAt @map("updated_at")
 
   // Relations
   team                  Team?                 @relation(fields: [teamId], references: [id])

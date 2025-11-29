@@ -240,4 +240,47 @@ export class UsersController {
   async getTeamMembers(@Param('teamId', ParseUUIDPipe) teamId: string) {
     return this.usersService.getTeamMembers(teamId);
   }
+
+  /**
+   * 슬랙 보고서 템플릿 조회 API
+   */
+  @ApiOperation({
+    summary: '슬랙 보고서 템플릿 조회',
+    description: '로그인한 사용자의 슬랙 일일 보고서 템플릿을 조회합니다.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '템플릿 반환',
+    schema: {
+      example: {
+        success: true,
+        data: {
+          template: ':o2: KR2팀 Key Results = ...',
+        },
+      },
+    },
+  })
+  @Get('me/slack-template')
+  async getSlackTemplate(@CurrentUser('id') userId: string) {
+    return this.usersService.getSlackReportTemplate(userId);
+  }
+
+  /**
+   * 슬랙 보고서 템플릿 저장 API
+   */
+  @ApiOperation({
+    summary: '슬랙 보고서 템플릿 저장',
+    description: '로그인한 사용자의 슬랙 일일 보고서 템플릿을 저장합니다.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: '템플릿 저장 성공',
+  })
+  @Post('me/slack-template')
+  async updateSlackTemplate(
+    @CurrentUser('id') userId: string,
+    @Body('template') template: string,
+  ) {
+    return this.usersService.updateSlackReportTemplate(userId, template);
+  }
 }

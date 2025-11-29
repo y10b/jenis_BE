@@ -90,7 +90,7 @@ GitHub OAuth 인증을 시작하기 위한 URL을 반환합니다.
     await this.githubService.handleCallback(dto.code, user);
 
     const frontendUrl = this.configService.get<string>('app.frontendUrl') || 'http://localhost:3000';
-    res.redirect(`${frontendUrl}/settings/integrations?github=success`);
+    res.redirect(`${frontendUrl}/settings?github=success`);
   }
 
   /**
@@ -394,5 +394,29 @@ Git 변경사항을 분석하여 PR 템플릿을 생성합니다.
   @Get('kr2/check-access')
   async checkKr2Access(@CurrentUser() user: RequestUser) {
     return this.githubService.checkKr2Access(user);
+  }
+
+  /**
+   * 당일 PR 목록 조회 API
+   */
+  @ApiOperation({
+    summary: '당일 PR 목록 조회',
+    description: `
+오늘 생성한 PR 목록을 조회합니다.
+
+### 반환 정보
+- PR 번호, 제목, URL, 상태
+- 생성일시
+- 라벨 목록
+    `,
+  })
+  @ApiQuery({ name: 'repo', description: '리포지토리 경로 (owner/repo)', required: false })
+  @ApiResponse({ status: 200, description: 'PR 목록 반환' })
+  @Get('today-prs')
+  async getTodayPRs(
+    @CurrentUser() user: RequestUser,
+    @Query('repo') repo?: string,
+  ) {
+    return this.githubService.getTodayPRs(user, repo);
   }
 }

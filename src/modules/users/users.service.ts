@@ -123,4 +123,34 @@ export class UsersService {
       orderBy: { name: 'asc' },
     });
   }
+
+  async getSlackReportTemplate(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { slackReportTemplate: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException(ErrorCodes.USER_NOT_FOUND);
+    }
+
+    return { template: user.slackReportTemplate };
+  }
+
+  async updateSlackReportTemplate(userId: string, template: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException(ErrorCodes.USER_NOT_FOUND);
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { slackReportTemplate: template },
+    });
+
+    return { message: '슬랙 보고서 템플릿이 저장되었습니다.' };
+  }
 }

@@ -14,7 +14,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-backoffice} -d ${POSTGRES_DB:-backoffice}']
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U ${POSTGRES_USER:-backoffice} -d ${POSTGRES_DB:-backoffice}',
+        ]
       interval: 10s
       timeout: 5s
       retries: 5

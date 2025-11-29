@@ -48,7 +48,7 @@ export class GithubService {
   ) {
     this.clientId = this.configService.get<string>('GITHUB_CLIENT_ID') || '';
     this.clientSecret = this.configService.get<string>('GITHUB_CLIENT_SECRET') || '';
-    this.redirectUri = this.configService.get<string>('GITHUB_REDIRECT_URI') || '';
+    this.redirectUri = this.configService.get<string>('GITHUB_CALLBACK_URL') || '';
   }
 
   getAuthUrl(userId: string): string {
@@ -791,5 +791,86 @@ export class GithubService {
       teamId: user.teamId,
       isOwner: false,
     };
+  }
+
+  /**
+   * 당일 생성/머지된 PR 목록 조회
+   */
+  async getTodayPRs(user: RequestUser, repo?: string) {
+    const accessToken = await this.getAccessToken(user.id);
+    const integration = await this.prisma.userIntegration.findUnique({
+      where: {
+        userId_provider: {
+          userId: user.id,
+          provider: IntegrationProvider.GITHUB,
+        },
+      },
+    });
+
+    if (!integration) {
+      throw new BadRequestException(ErrorCodes.INTEGRATION_NOT_CONNECTED);
+    }
+
+    const username = integration.providerUsername;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayISO = today.toISOString().split('T')[0];
+
+    // 특정 repo가 지정된 경우 해당 repo에서만 조회
+    if (repo) {
+      return this.fetchPRsFromRepo(accessToken, repo, username!, todayISO);
+    }
+
+    // repo 미지정시 사용자의 모든 repo에서 PR 조회
+    const repos = await this.getRepositories(user);
+    const allPRs: any[] = [];
+
+    for (const r of repos.slice(0, 10)) {
+      // 최근 업데이트된 10개 repo만
+      try {
+        const prs = await this.fetchPRsFromRepo(accessToken, r.fullName, username!, todayISO);
+        allPRs.push(...prs);
+      } catch (e) {
+        // 개별 repo 에러는 무시
+      }
+    }
+
+    return allPRs;
+  }
+
+  private async fetchPRsFromRepo(
+    accessToken: string,
+    repo: string,
+    username: string,
+    todayISO: string,
+  ) {
+    // 사용자가 작성한 PR 조회 (오늘 생성 또는 머지된 것)
+    const searchQuery = `repo:${repo} author:${username} is:pr created:>=${todayISO}`;
+
+    const response = await fetch(
+      `https://api.github.com/search/issues?q=${encodeURIComponent(searchQuery)}&sort=created&order=desc`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: 'application/vnd.github.v3+json',
+        },
+      },
+    );
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const data = await response.json();
+
+    return (data.items || []).map((pr: any) => ({
+      number: pr.number,
+      title: pr.title,
+      url: pr.html_url,
+      state: pr.state,
+      createdAt: pr.created_at,
+      repo: repo,
+      labels: pr.labels?.map((l: any) => l.name) || [],
+    }));
   }
 }
