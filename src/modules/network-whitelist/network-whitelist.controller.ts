@@ -7,6 +7,7 @@ import {
   Body,
   Param,
   ParseUUIDPipe,
+  Ip,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -17,20 +18,53 @@ import {
 } from '@nestjs/swagger';
 import { NetworkWhitelistService } from './network-whitelist.service';
 import { CreateWhitelistDto, UpdateWhitelistDto } from './dto';
-import { CurrentUser, Roles } from '../../common/decorators';
+import { CurrentUser, Roles, Public } from '../../common/decorators';
 import type { RequestUser } from '../../common/interfaces';
 import { UserRole } from '@prisma/client';
 
 /**
+ * IP 검증 컨트롤러 (공개 API)
+ */
+@ApiTags('IP Verification')
+@Controller('ip')
+export class IpVerificationController {
+  constructor(private readonly networkWhitelistService: NetworkWhitelistService) {}
+
+  /**
+   * 현재 IP 조회 및 화이트리스트 검증 API
+   */
+  @ApiOperation({
+    summary: '현재 IP 확인 및 화이트리스트 검증',
+    description: '클라이언트의 현재 IP 주소를 반환하고 화이트리스트 등록 여부를 확인합니다.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'IP 정보 및 화이트리스트 검증 결과',
+    schema: {
+      type: 'object',
+      properties: {
+        ip: { type: 'string', example: '192.168.1.100' },
+        isAllowed: { type: 'boolean', example: true },
+      },
+    },
+  })
+  @Public()
+  @Get('verify')
+  async verifyIp(@Ip() ip: string) {
+    return this.networkWhitelistService.verifyIp(ip);
+  }
+}
+
+/**
  * 네트워크 화이트리스트 관리 컨트롤러
  *
- * 허용된 IP 주소/대역을 관리합니다. OWNER 역할만 접근 가능합니다.
+ * 허용된 IP 주소/대역을 관리합니다. OWNER, HEAD 역할이 접근 가능합니다.
  * CIDR 표기법을 사용하여 IP 범위를 지정할 수 있습니다.
  */
 @ApiTags('Network Whitelist')
 @ApiBearerAuth('accessToken')
 @Controller('admin/network-whitelist')
-@Roles(UserRole.OWNER)
+@Roles(UserRole.OWNER, UserRole.HEAD)
 export class NetworkWhitelistController {
   constructor(private readonly networkWhitelistService: NetworkWhitelistService) {}
 

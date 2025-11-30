@@ -167,6 +167,25 @@ export class NetworkWhitelistService {
     return updatedEntry;
   }
 
+  /**
+   * IP 검증 API용 메서드
+   * 클라이언트 IP를 반환하고 화이트리스트 등록 여부를 확인합니다.
+   */
+  async verifyIp(ip: string) {
+    // IPv6 loopback을 IPv4로 변환
+    const normalizedIp = ip === '::1' || ip === '::ffff:127.0.0.1' ? '127.0.0.1' : ip.replace('::ffff:', '');
+
+    const whitelistEntries = await this.findEnabled();
+    const isAllowed = this.isIpAllowed(normalizedIp, whitelistEntries);
+
+    this.logger.log(`IP verification: ${normalizedIp} - ${isAllowed ? 'allowed' : 'denied'}`);
+
+    return {
+      ip: normalizedIp,
+      isAllowed,
+    };
+  }
+
   // Check if an IP is in the whitelist
   isIpAllowed(ip: string, whitelistEntries: { cidr: string }[]): boolean {
     if (whitelistEntries.length === 0) {
