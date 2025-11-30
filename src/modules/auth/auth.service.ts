@@ -227,11 +227,12 @@ export class AuthService {
     const nodeEnv = this.configService.get<string>('app.env') || process.env.NODE_ENV;
     const isProduction = nodeEnv === 'production';
 
+    // 로컬 개발 환경에서는 secure: false, sameSite: 'lax'
+    // 프로덕션에서는 크로스 도메인을 위해 secure: true, sameSite: 'none'
     const baseOptions = {
       httpOnly: true,
-      // 크로스 도메인 쿠키 전송을 위해 secure와 sameSite 설정
-      secure: true, // HTTPS 필수 (Render, Vercel 모두 HTTPS 사용)
-      sameSite: 'none' as const, // 크로스 도메인 쿠키 전송 허용
+      secure: isProduction,
+      sameSite: isProduction ? 'none' as const : 'lax' as const,
     };
 
     if (type === 'access') {
@@ -244,7 +245,7 @@ export class AuthService {
 
     return {
       ...baseOptions,
-      path: '/api/v1/auth',
+      path: '/',  // refreshToken도 모든 경로에서 접근 가능하도록 변경
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     };
   }

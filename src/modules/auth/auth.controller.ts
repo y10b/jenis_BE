@@ -295,13 +295,11 @@ export class AuthController {
     await this.authService.logout(userId, refreshToken);
 
     // 쿠키 삭제 (설정할 때와 동일한 옵션 사용)
-    const clearOptions = {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'none' as const,
-    };
-    response.clearCookie('accessToken', { ...clearOptions, path: '/' });
-    response.clearCookie('refreshToken', { ...clearOptions, path: '/api/v1/auth' });
+    const accessClearOptions = this.authService.getCookieOptions('access');
+    const refreshClearOptions = this.authService.getCookieOptions('refresh');
+
+    response.clearCookie('accessToken', accessClearOptions);
+    response.clearCookie('refreshToken', refreshClearOptions);
 
     return { message: '로그아웃되었습니다.' };
   }
