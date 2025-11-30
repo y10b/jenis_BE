@@ -223,16 +223,16 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
-  getCookieOptions(type: 'access' | 'refresh') {
-    const nodeEnv = this.configService.get<string>('app.env') || process.env.NODE_ENV;
-    const isProduction = nodeEnv === 'production';
+  getCookieOptions(type: 'access' | 'refresh', origin?: string) {
+    // origin이 localhost면 개발 환경으로 판단
+    const isLocalhost = origin?.includes('localhost') || origin?.includes('127.0.0.1');
 
-    // 로컬 개발 환경에서는 secure: false, sameSite: 'lax'
-    // 프로덕션에서는 크로스 도메인을 위해 secure: true, sameSite: 'none'
+    // localhost에서 요청하면 secure: false로 설정 (HTTP에서도 쿠키 저장 가능)
+    // 프로덕션(배포된 프론트)에서 요청하면 secure: true, sameSite: 'none'
     const baseOptions = {
       httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? 'none' as const : 'lax' as const,
+      secure: !isLocalhost,
+      sameSite: isLocalhost ? 'lax' as const : 'none' as const,
     };
 
     if (type === 'access') {

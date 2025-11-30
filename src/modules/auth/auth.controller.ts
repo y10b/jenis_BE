@@ -165,20 +165,22 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async login(
     @Body() dto: LoginDto,
+    @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ) {
     const result = await this.authService.login(dto);
+    const origin = request.headers.origin;
 
     // 쿠키에 토큰 저장
     response.cookie(
       'accessToken',
       result.accessToken,
-      this.authService.getCookieOptions('access'),
+      this.authService.getCookieOptions('access', origin),
     );
     response.cookie(
       'refreshToken',
       result.refreshToken,
-      this.authService.getCookieOptions('refresh'),
+      this.authService.getCookieOptions('refresh', origin),
     );
 
     return { user: result.user };
@@ -233,19 +235,21 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async refresh(
     @CurrentUser() user: RequestUser & { tokenId: string },
+    @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ) {
     const tokens = await this.authService.refresh(user);
+    const origin = request.headers.origin;
 
     response.cookie(
       'accessToken',
       tokens.accessToken,
-      this.authService.getCookieOptions('access'),
+      this.authService.getCookieOptions('access', origin),
     );
     response.cookie(
       'refreshToken',
       tokens.refreshToken,
-      this.authService.getCookieOptions('refresh'),
+      this.authService.getCookieOptions('refresh', origin),
     );
 
     return { message: '토큰이 갱신되었습니다.' };
@@ -294,9 +298,11 @@ export class AuthController {
     const refreshToken = request.cookies?.refreshToken;
     await this.authService.logout(userId, refreshToken);
 
+    const origin = request.headers.origin;
+
     // 쿠키 삭제 (설정할 때와 동일한 옵션 사용)
-    const accessClearOptions = this.authService.getCookieOptions('access');
-    const refreshClearOptions = this.authService.getCookieOptions('refresh');
+    const accessClearOptions = this.authService.getCookieOptions('access', origin);
+    const refreshClearOptions = this.authService.getCookieOptions('refresh', origin);
 
     response.clearCookie('accessToken', accessClearOptions);
     response.clearCookie('refreshToken', refreshClearOptions);
