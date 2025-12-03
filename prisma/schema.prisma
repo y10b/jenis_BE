@@ -16,6 +16,7 @@ datasource db {
 
 enum UserRole {
   OWNER
+  TEAM_LEAD
   HEAD
   LEAD
   ACTOR
@@ -109,6 +110,8 @@ model User {
   ownedTeams            Team[]                @relation("TeamOwner")
   retrospectiveShares   RetrospectiveShare[]
   attendances           Attendance[]
+  teamDocuments         TeamDocument[]
+  documentFavorites     DocumentFavorite[]
 
   @@index([email])
   @@index([teamId])
@@ -136,6 +139,7 @@ model Team {
   sharesFrom          TeamShare[]          @relation("ShareFrom")
   sharesTo            TeamShare[]          @relation("ShareTo")
   retrospectiveShares RetrospectiveShare[]
+  teamDocuments       TeamDocument[]
 
   @@map("teams")
 }
@@ -412,4 +416,39 @@ model Attendance {
   @@index([userId])
   @@index([createdAt])
   @@map("attendances")
+}
+
+model TeamDocument {
+  id        String   @id @default(uuid())
+  teamId    String   @map("team_id")
+  creatorId String   @map("creator_id")
+  title     String
+  content   String   @db.Text
+  tags      String[] @default([])
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  team      Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  creator   User               @relation(fields: [creatorId], references: [id])
+  favorites DocumentFavorite[]
+
+  @@index([teamId])
+  @@index([creatorId])
+  @@map("team_documents")
+}
+
+model DocumentFavorite {
+  id         String   @id @default(uuid())
+  documentId String   @map("document_id")
+  userId     String   @map("user_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // Relations
+  document TeamDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, userId])
+  @@index([userId])
+  @@map("document_favorites")
 }
